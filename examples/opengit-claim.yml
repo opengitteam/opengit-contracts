@@ -1,0 +1,57 @@
+# Claim your repo on OpenGit.
+#
+# Copy this file to .github/workflows/opengit-claim.yml on your default branch, then run it from
+# the Actions tab ("Run workflow") with the wallet that should receive your repo's tips and
+# payments. Only people with write access to the repo can run it.
+#
+# It asks GitHub for a short-lived OIDC token whose audience names the OpenGit escrow, the chain
+# and your payout address, and prints it. The token is safe to show in public logs: it expires in
+# minutes, works once, and can only start a claim that pays the wallet you entered. Submit it on
+# opengit.cc, or yourself with the `cast send` command it prints.
+name: OpenGit claim
+
+on:
+  workflow_dispatch:
+    inputs:
+      payout:
+        description: "Wallet that receives this repo's funds (0x...)"
+        required: true
+
+permissions:
+  id-token: write # lets the job request a GitHub OIDC token
+  contents: read
+
+env:
+  # OpenGit's deployment. Check these against opengit.cc and github.com/opengitteam/opengit-contracts.
+  OPENGIT_CHAIN_ID: "46630" # Robinhood Chain testnet
+  OPENGIT_ESCROW: "0x0000000000000000000000000000000000000000" # set after deployment
+  OPENGIT_RPC: "https://rpc.testnet.chain.robinhood.com"
+
+jobs:
+  claim:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a claim token from GitHub
+        uses: actions/github-script@v7
+        env:
+          PAYOUT: ${{ inputs.payout }}
+        with:
+          script: |
+            const payout = process.env.PAYOUT.trim().toLowerCase();
+            if (!/^0x[0-9a-f]{40}$/.test(payout)) throw new Error(`Not an address: ${payout}`);
+            const escrow = process.env.OPENGIT_ESCROW.toLowerCase();
+            const audience = `opengit:${process.env.OPENGIT_CHAIN_ID}:${escrow}:${payout}`;
+            const jwt = await core.getIDToken(audience);
+            const [header, payload, sig] = jwt.split(".");
+            const signature = "0x" + Buffer.from(sig, "base64url").toString("hex");
+            const claims = JSON.parse(Buffer.from(payload, "base64url").toString());
+            core.summary
+              .addHeading("OpenGit claim token")
+              .addRaw(`Repo ${claims.repository} (id ${claims.repository_id}) → payout ${payout}. Valid until ${new Date(claims.exp * 1000).toISOString()}.`, true)
+              .addCodeBlock(JSON.stringify({ header, payload, signature, payout }, null, 2), "json")
+              .addRaw("Submit it on opengit.cc, or with Foundry:", true)
+              .addCodeBlock(`cast send ${escrow} "claim(bytes,bytes,bytes,address)" "0x${Buffer.from(header).toString("hex")}" "0x${Buffer.from(payload).toString("hex")}" ${signature} ${payout} --rpc-url ${process.env.OPENGIT_RPC} --account <your-keystore>`, "bash")
+              .write();
+            core.info(`header=${header}`);
+            core.info(`payload=${payload}`);
+            core.info(`signature=${signature}`);

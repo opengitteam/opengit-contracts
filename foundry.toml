@@ -1,0 +1,17 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+# Robinhood Chain and Base both support Cancun; shanghai keeps the bytecode portable.
+evm_version = "shanghai"
+fs_permissions = [{ access = "read", path = "./test/fixtures" }, { access = "read", path = "./script" }]
+
+[fmt]
+line_length = 120
+
+[rpc_endpoints]
+robinhood = "https://rpc.mainnet.chain.robinhood.com"
+robinhood_testnet = "https://rpc.testnet.chain.robinhood.com"
